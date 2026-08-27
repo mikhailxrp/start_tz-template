@@ -117,29 +117,39 @@ def check_requirement(block):
             issues.append(Issue("ERROR", ln,
                 f"{rid}: категория NFR '{cat}' отсутствует в справочнике"))
 
-    # Обязательные поля
-    if "Приоритет:" not in body:
-        issues.append(Issue("ERROR", ln, f"{rid}: нет строки 'Приоритет:'"))
+    is_br = rid.startswith("BR-")
+
+    # Обязательные поля.
+    # Бизнес-правила BR имеют иной формат: таблица правил вместо
+    # приоритета, роли и критериев приёмки.
+    if not is_br:
+        if "Приоритет:" not in body:
+            issues.append(Issue("ERROR", ln, f"{rid}: нет строки 'Приоритет:'"))
+        else:
+            pm = re.search(r"Приоритет:\s*([A-Z']+)", body)
+            if pm and pm.group(1) not in PRIORITIES:
+                issues.append(Issue("ERROR", ln,
+                    f"{rid}: приоритет '{pm.group(1)}' вне MoSCoW"))
+
+        if "Очередь:" not in body:
+            issues.append(Issue("WARN", ln, f"{rid}: нет строки 'Очередь:'"))
+        if "Роль:" not in body:
+            issues.append(Issue("WARN", ln, f"{rid}: нет строки 'Роль:'"))
+        if "Источник:" not in body:
+            issues.append(Issue("WARN", ln, f"{rid}: нет строки 'Источник:'"))
+
+        if "Критерии приёмки" not in body and "Критерии приемки" not in body:
+            issues.append(Issue("ERROR", ln, f"{rid}: нет критериев приёмки"))
+
+        if "Требование:" not in body:
+            issues.append(Issue("WARN", ln, f"{rid}: нет блока 'Требование:'"))
     else:
-        pm = re.search(r"Приоритет:\s*([A-Z']+)", body)
-        if pm and pm.group(1) not in PRIORITIES:
-            issues.append(Issue("ERROR", ln,
-                f"{rid}: приоритет '{pm.group(1)}' вне MoSCoW"))
-
-    if "Очередь:" not in body:
-        issues.append(Issue("WARN", ln, f"{rid}: нет строки 'Очередь:'"))
-    if "Роль:" not in body:
-        issues.append(Issue("WARN", ln, f"{rid}: нет строки 'Роль:'"))
-    if "Источник:" not in body:
-        issues.append(Issue("WARN", ln, f"{rid}: нет строки 'Источник:'"))
-
-    # Критерии приёмки — главный признак проверяемости
-    if "Критерии приёмки" not in body and "Критерии приемки" not in body:
-        issues.append(Issue("ERROR", ln, f"{rid}: нет критериев приёмки"))
-
-    # Тело требования
-    if "Требование:" not in body:
-        issues.append(Issue("WARN", ln, f"{rid}: нет блока 'Требование:'"))
+        # Бизнес-правило должно содержать таблицу или нумерованные правила
+        has_table = "|" in body
+        has_rules = re.search(r"^\s*\d+\.", body, re.M)
+        if not (has_table or has_rules):
+            issues.append(Issue("WARN", ln,
+                f"{rid}: бизнес-правило без таблицы и без нумерованных правил"))
 
     # Запрещённые формулировки
     lowered = body.lower()
@@ -151,7 +161,7 @@ def check_requirement(block):
 
     # Подозрительно короткое требование — признак дрейфа формата
     meaningful = [l for l in block["body"] if l.strip()]
-    if len(meaningful) < 5:
+    if not is_br and len(meaningful) < 5:
         issues.append(Issue("WARN", ln,
             f"{rid}: тело требования всего {len(meaningful)} строк — "
             f"вероятно, формат сокращён"))
@@ -283,6 +293,19 @@ def main():
         sys.exit(2)
 
     issues, blocks = check_document(text)
+
+    # Незаполненный шаблон: много остатков формы и почти нет требований.
+    # Блокировать коммит такого файла бессмысленно — работа ещё не начата.
+    leftovers = sum(1 for i in issues if "остаток шаблона" in i.message)
+    if leftovers > 20 and len(blocks) <= 3:
+        print(f"\n{'='*62}")
+        print(f"  {path}")
+        print(f"{'='*62}\n")
+        print("  Документ ещё не заполнен: это незаполненный шаблон")
+        print(f"  ({leftovers} остатков формы, требований: {len(blocks)}).")
+        print("  Проверка пропущена.\n")
+        sys.exit(0)
+
     error_count = report(issues, blocks, path)
 
     if strict and error_count:

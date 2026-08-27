@@ -36,20 +36,20 @@ $ErrorActionPreference = "Stop"
 $templateRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not (Test-Path $Path)) {
-    Write-Host "Путь не найден: $Path" -ForegroundColor Red
+    Write-Host "Path not found: $Path" -ForegroundColor Red
     exit 1
 }
 
 $target = Join-Path (Resolve-Path $Path) $Name
 
 if (Test-Path $target) {
-    Write-Host "Папка уже существует: $target" -ForegroundColor Red
+    Write-Host "Directory already exists: $target" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
-Write-Host "Создаю проект: $Name" -ForegroundColor Cyan
-Write-Host "Путь: $target"
+Write-Host "Creating project: $Name" -ForegroundColor Cyan
+Write-Host "Path: $target"
 Write-Host ""
 
 # --- Копирование ----------------------------------------------------------
@@ -156,12 +156,20 @@ if (-not $NoGit) {
     try {
         git init -q
         git config core.hooksPath .githooks
-        git add .
-        git commit -q -m "init: project skeleton from tz-template"
-        Write-Host "Git: репозиторий создан, первый коммит сделан" -ForegroundColor Green
+        git config core.autocrlf false
+        git add . 2>$null
+        git commit -q -m "init: project skeleton from tz-template" 2>$null
+
+        git rev-parse --verify HEAD *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Git: repository initialized, first commit created" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Git: repository initialized, commit skipped" -ForegroundColor Yellow
+        }
     }
     catch {
-        Write-Host "Git пропущен: $_" -ForegroundColor Yellow
+        Write-Host "Git skipped: $_" -ForegroundColor Yellow
     }
     finally {
         Pop-Location
@@ -171,10 +179,10 @@ if (-not $NoGit) {
 # --- Итог -----------------------------------------------------------------
 
 Write-Host ""
-Write-Host "Готово." -ForegroundColor Green
+Write-Host "Done." -ForegroundColor Green
 Write-Host ""
-Write-Host "Дальше:" -ForegroundColor Yellow
-Write-Host "  1. Положить заполненный бриф в 00-input\brief.md"
+Write-Host "Next steps:" -ForegroundColor Yellow
+Write-Host "  1. Put the filled brief into 00-input\brief.md"
 Write-Host "  2. cd `"$target`""
 Write-Host "  3. claude"
 Write-Host "  4. /tz-start"
