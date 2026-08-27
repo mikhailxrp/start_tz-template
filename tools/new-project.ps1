@@ -152,6 +152,11 @@ Set-Content -Path (Join-Path $target ".gitignore") -Value $gitignore -Encoding U
 # --- Git ------------------------------------------------------------------
 
 if (-not $NoGit) {
+    # Git пишет вывод хуков в stderr. При ErrorActionPreference = "Stop"
+    # PowerShell считает это исключением, даже когда команда успешна.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
     Push-Location $target
     try {
         git init -q
@@ -173,6 +178,7 @@ if (-not $NoGit) {
     }
     finally {
         Pop-Location
+        $ErrorActionPreference = $prevEAP
     }
 }
 
