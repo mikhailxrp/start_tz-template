@@ -1,0 +1,19 @@
+#!/bin/sh
+# TZ validation before commit.
+# Skip once: git commit --no-verify
+
+if [ ! -f "01-tz/tz.md" ]; then
+    exit 0
+fi
+
+echo "Validating TZ..."
+python tools/check_tz.py 01-tz/tz.md --strict
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "Commit aborted: TZ has ERROR-level issues."
+    echo "Fix them or bypass with: git commit --no-verify"
+    exit 1
+fi
+
+exit 0
