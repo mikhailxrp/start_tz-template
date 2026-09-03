@@ -70,7 +70,13 @@ def parse_requirements(lines):
     """Возвращает список блоков требований: (id, маркер, заголовок, строка, тело)."""
     blocks = []
     current = None
+    in_code = False
     for i, line in enumerate(lines, start=1):
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
         m = REQ_HEADER.match(line.strip())
         if m:
             if current:
