@@ -48,15 +48,14 @@ CRITICAL_SECTIONS = {
 
 TEMPLATE_LEFTOVERS = [
     "[УДАЛИТЬ ЕСЛИ",
-    "← бриф п.",
     "Заполнить:",
     "ЗАПОЛНИТЬ",
 ]
 
 REQ_HEADER = re.compile(
-    r"^###\s+(FR-([A-Z]+)-(\d{3})|NFR-([A-Z]+)-(\d{3})|BR-(\d{3}))(/[БР])?\s*·\s*(.+)$"
+    r"^###\s+(FR-([A-Z][A-Z0-9]*)-(\d{3})|NFR-([A-Z]+)-(\d{3})|BR-(\d{3}))(/[БР])?\s*·\s*(.+)$"
 )
-ANY_ID = re.compile(r"\b((?:FR-[A-Z]+|NFR-[A-Z]+|BR|AS|Q|C|RISK)-\d{3})(/[БР])?\b")
+ANY_ID = re.compile(r"\b((?:FR-[A-Z][A-Z0-9]*|NFR-[A-Z]+|BR|AS|Q|C|RISK)-\d{3})(/[БР])?\b")
 
 
 class Issue:
@@ -303,7 +302,7 @@ def main():
     # Незаполненный шаблон: много остатков формы и почти нет требований.
     # Блокировать коммит такого файла бессмысленно — работа ещё не начата.
     leftovers = sum(1 for i in issues if "остаток шаблона" in i.message)
-    if leftovers > 20 and len(blocks) <= 3:
+    if len(blocks) <= 2 and leftovers >= 2:
         print(f"\n{'='*62}")
         print(f"  {path}")
         print(f"{'='*62}\n")
