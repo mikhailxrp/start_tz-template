@@ -18,7 +18,7 @@ from collections import Counter, defaultdict
 # --- Конфигурация ---------------------------------------------------------
 
 MODULES = {
-    "CAT", "CARD", "SRCH", "CART", "CHK", "PAY", "SHIP", "ORD", "STOCK",
+    "HOME", "CAT", "CARD", "SRCH", "CART", "CHK", "PAY", "SHIP", "ORD", "STOCK",
     "RET", "DISC", "ACC", "B2B", "MGR", "ADM", "AUTH", "NOTIF", "SEO",
     "INT", "CNT", "MIGR",
 }

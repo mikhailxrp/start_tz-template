@@ -1,19 +1,19 @@
-<#
+﻿<#
 .SYNOPSIS
-    Создаёт папку нового проекта ТЗ на основе шаблона.
+    Creates a new TZ project folder from the tz-template.
 
 .DESCRIPTION
-    Копирует скелет папок, эталонные документы, инструменты и команды
-    Claude Code в новую папку. Инициализирует git-репозиторий.
+    Copies the folder skeleton, reference documents, tools and Claude Code
+    commands into a new folder. Initializes a git repository.
 
 .PARAMETER Name
-    Имя проекта. Станет именем папки.
+    Project name. Becomes the folder name.
 
 .PARAMETER Path
-    Куда создать. По умолчанию — папка рядом с tz-template.
+    Where to create it. Defaults to the folder next to tz-template.
 
 .PARAMETER NoGit
-    Не инициализировать git.
+    Skip git initialization.
 
 .EXAMPLE
     .\tools\new-project.ps1 -Name "acme-electronics"
@@ -52,7 +52,7 @@ Write-Host "Creating project: $Name" -ForegroundColor Cyan
 Write-Host "Path: $target"
 Write-Host ""
 
-# --- Копирование ----------------------------------------------------------
+# --- Copy files -----------------------------------------------------------
 
 Copy-Item -Path (Join-Path $templateRoot "template") -Destination $target -Recurse
 Copy-Item -Path (Join-Path $templateRoot "reference") -Destination $target -Recurse
@@ -60,81 +60,30 @@ Copy-Item -Path (Join-Path $templateRoot "tools")     -Destination $target -Recu
 Copy-Item -Path (Join-Path $templateRoot ".claude")   -Destination $target -Recurse
 Copy-Item -Path (Join-Path $templateRoot "CLAUDE.md") -Destination $target
 
-# Скрипт создания проектов внутри проекта не нужен
+# The project-creation script itself is not needed inside a project
 Remove-Item (Join-Path $target "tools\new-project.ps1") -ErrorAction SilentlyContinue
 
-# Пустой файл ТЗ из шаблона
+# Blank TZ document from the template
 Copy-Item -Path (Join-Path $templateRoot "reference\template-tz.md") `
           -Destination (Join-Path $target "01-tz\tz.md")
 
-# --- README проекта -------------------------------------------------------
+# --- Project README -------------------------------------------------------
+# README text lives in template/README.md with placeholders.
+# This script contains no Cyrillic on purpose: PowerShell 5.1 mangles it
+# whenever the .ps1 file gets saved without a BOM.
 
 $stamp = Get-Date -Format "yyyy-MM-dd"
-$fence = '```'
+$readmePath = Join-Path $target "README.md"
 
-$readme = @"
-# $Name
-
-Создан: $stamp
-Из шаблона: tz-template
-
-## Порядок работы
-
-1. Положить заполненный бриф в ``00-input/brief.md``
-2. Приложения — в ``00-input/attachments/``
-3. Открыть папку в Claude Code: ``claude``
-4. Выполнять команды по порядку
-
-$fence
-/tz-start                              инвентаризация, вопросы клиенту
-/tz-model                              разделы 4-6: глоссарий, роли, состояния
-/tz-scenarios                          раздел 7: сценарии
-/tz-modules 8.1 8.2 8.3 8.18           каталог, карточка, поиск, контент
-/tz-modules 8.4 8.5 8.6 8.7            корзина, оформление, оплата, доставка
-/tz-modules 8.8 8.9 8.10 8.11          заказы, склад, возвраты, скидки
-/tz-modules 8.12 8.13 8.14 8.15 8.16 8.17   кабинеты, админка, уведомления
-/tz-rules                              разделы 9-14
-/tz-summary                            разделы 1-3
-/tz-review                             ревью НОВОЙ сессией
-$fence
-
-5. Коммит после каждой сессии
-
-$fence
-git commit -am "tz: section 8.5 checkout, 12 requirements"
-$fence
-
-## Гейты
-
-Нельзя идти дальше, пока:
-
-| Этап | Условие |
-|---|---|
-| После /tz-start | вопросы отправлены клиенту |
-| После /tz-model | разделы 4-6 заполнены |
-| После каждого /tz-modules | check_tz.py без ошибок ERROR |
-| Перед /tz-summary | разделы 4-13 закрыты |
-| Перед передачей в SDD | ревью пройдено |
-
-## Проверка
-
-$fence
-python tools\check_tz.py 01-tz\tz.md
-python tools\check_tz.py 01-tz\tz.md --strict
-$fence
-
-## Структура
-
-$fence
-00-input/     данные клиента, только чтение
-01-tz/        рабочая папка: tz.md, decisions.md, coverage.md
-02-sdd/       следующий этап
-reference/    эталоны
-tools/        валидатор
-$fence
-"@
-
-Set-Content -Path (Join-Path $target "README.md") -Value $readme -Encoding UTF8
+if (Test-Path $readmePath) {
+    $readme = Get-Content -Path $readmePath -Raw -Encoding UTF8
+    $readme = $readme -replace '\{\{PROJECT_NAME\}\}', $Name
+    $readme = $readme -replace '\{\{DATE\}\}', $stamp
+    Set-Content -Path $readmePath -Value $readme -Encoding UTF8 -NoNewline
+}
+else {
+    Write-Host "Warning: template/README.md not found, project README skipped" -ForegroundColor Yellow
+}
 
 # --- .gitignore -----------------------------------------------------------
 
@@ -152,8 +101,8 @@ Set-Content -Path (Join-Path $target ".gitignore") -Value $gitignore -Encoding U
 # --- Git ------------------------------------------------------------------
 
 if (-not $NoGit) {
-    # Git пишет вывод хуков в stderr. При ErrorActionPreference = "Stop"
-    # PowerShell считает это исключением, даже когда команда успешна.
+    # Git writes hook output to stderr. With ErrorActionPreference = "Stop"
+    # PowerShell treats that as an exception even on success.
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
 
@@ -182,7 +131,7 @@ if (-not $NoGit) {
     }
 }
 
-# --- Итог -----------------------------------------------------------------
+# --- Summary --------------------------------------------------------------
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
