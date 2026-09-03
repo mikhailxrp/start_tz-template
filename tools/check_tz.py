@@ -20,10 +20,10 @@ from collections import Counter, defaultdict
 MODULES = {
     "HOME", "CAT", "CARD", "SRCH", "CART", "CHK", "PAY", "SHIP", "ORD", "STOCK",
     "RET", "DISC", "ACC", "B2B", "MGR", "ADM", "AUTH", "NOTIF", "SEO",
-    "INT", "CNT", "MIGR",
+    "INT", "CNT", "MIGR", "AI",
 }
 
-NFR_CATEGORIES = {"PERF", "LOAD", "SEC", "AVL", "LEGAL", "OPS", "COMP"}
+NFR_CATEGORIES = {"PERF", "LOAD", "SEC", "AVL", "LEGAL", "OPS", "COMP", "AI"}
 
 PRIORITIES = {"MUST", "SHOULD", "COULD", "WON'T"}
 QUEUES = {"MVP", "2", "нет"}
@@ -53,9 +53,9 @@ TEMPLATE_LEFTOVERS = [
 ]
 
 REQ_HEADER = re.compile(
-    r"^###\s+(FR-([A-Z][A-Z0-9]*)-(\d{3})|NFR-([A-Z]+)-(\d{3})|BR-(\d{3}))(/[БР])?\s*·\s*(.+)$"
+    r"^###\s+(FR-([A-Z][A-Z0-9]*)-(\d{3})|NFR-([A-Z]+)-(\d{3})|BR(?:-AI)?-(\d{3}))(/[БР_])?\s*·\s*(.+)$"
 )
-ANY_ID = re.compile(r"\b((?:FR-[A-Z][A-Z0-9]*|NFR-[A-Z]+|BR|AS|Q|C|RISK)-\d{3})(/[БР])?\b")
+ANY_ID = re.compile(r"\b((?:FR-[A-Z][A-Z0-9]*|NFR-[A-Z]+|BR-AI|BR|AS|Q|C|RISK)-\d{3})(/[БР_])?\b")
 
 
 class Issue:
@@ -94,6 +94,78 @@ def parse_requirements(lines):
     if current:
         blocks.append(current)
     return blocks
+
+
+TABLE_REQ = re.compile(
+    r"^\|\s*((?:FR-[A-Z][A-Z0-9]*|NFR-[A-Z]+|BR(?:-AI)?)-\d{3})(/[БР_])?\s*\|(.+)\|"
+)
+
+
+def parse_table_requirements(lines):
+    """Требования в табличном формате: | FR-CAT-005/Б | текст | ... |"""
+    blocks = []
+    in_code = False
+    for i, line in enumerate(lines, start=1):
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        m = TABLE_REQ.match(line.strip())
+        if m:
+            cells = [c.strip() for c in m.group(3).split("|")]
+            blocks.append({
+                "id": m.group(1),
+                "marker": (m.group(2) or "").lstrip("/"),
+                "title": cells[0] if cells else "",
+                "line": i,
+                "body": cells,
+                "table": True,
+            })
+    return blocks
+
+
+def check_table_requirement(block):
+    """Табличное требование: ID, текст, приоритет, роль, критерий приёмки."""
+    issues = []
+    rid = block["id"]
+    ln = block["line"]
+
+    if not block["marker"]:
+        issues.append(Issue("ERROR", ln,
+            f"{rid}: нет маркера /Б или /Р — происхождение неизвестно"))
+
+    if rid.startswith("FR-"):
+        module = rid.split("-")[1]
+        if module not in MODULES:
+            issues.append(Issue("ERROR", ln,
+                f"{rid}: модуль '{module}' отсутствует в справочнике"))
+        if module == "AI":
+            issues.append(Issue("ERROR", ln,
+                f"{rid}: требования модуля AI пишутся только в полном формате"))
+
+    cells = block["body"]
+    if len(cells) < 4:
+        issues.append(Issue("ERROR", ln,
+            f"{rid}: табличное требование неполное — нужны текст, приоритет, "
+            f"роль, критерий приёмки (найдено {len(cells)})"))
+        return issues
+
+    if not any(p in cells[1] for p in PRIORITIES):
+        issues.append(Issue("ERROR", ln,
+            f"{rid}: приоритет '{cells[1]}' вне MoSCoW"))
+
+    if not cells[3].strip() or cells[3].strip() in {"—", "-"}:
+        issues.append(Issue("ERROR", ln, f"{rid}: нет критерия приёмки"))
+
+    lowered = " ".join(cells).lower()
+    for w in BANNED_WORDS:
+        if w in lowered:
+            issues.append(Issue("WARN", ln,
+                f"{rid}: расплывчатая формулировка — '{w}'"))
+            break
+
+    return issues
 
 
 def check_requirement(block):
@@ -146,8 +218,10 @@ def check_requirement(block):
         if "Критерии приёмки" not in body and "Критерии приемки" not in body:
             issues.append(Issue("ERROR", ln, f"{rid}: нет критериев приёмки"))
 
-        if "Требование:" not in body:
-            issues.append(Issue("WARN", ln, f"{rid}: нет блока 'Требование:'"))
+        has_screen = "Экран:" in body or "SCR-" in body
+        if "Требование:" not in body and not has_screen:
+            issues.append(Issue("WARN", ln,
+                f"{rid}: нет блока 'Требование:' и нет ссылки на экран"))
     else:
         # Бизнес-правило должно содержать таблицу или нумерованные правила
         has_table = "|" in body
@@ -155,6 +229,22 @@ def check_requirement(block):
         if not (has_table or has_rules):
             issues.append(Issue("WARN", ln,
                 f"{rid}: бизнес-правило без таблицы и без нумерованных правил"))
+
+    # Модуль AI: обязательные поля сверх стандартных
+    if rid.startswith("FR-AI-"):
+        for field, why in [
+            ("Провайдер:", "не указан класс задачи и юрисдикция"),
+            ("Проверка результата:", "не указано, кто ловит ошибку"),
+            ("При недоступности:", "провайдер будет недоступен"),
+        ]:
+            if field not in body:
+                issues.append(Issue("ERROR", ln,
+                    f"{rid}: нет строки '{field}' — {why}"))
+        for w in ("корректно", "качественно", "понимает", "адекватн"):
+            if w in body.lower():
+                issues.append(Issue("WARN", ln,
+                    f"{rid}: непроверяемое обещание качества — '{w}'"))
+                break
 
     # Запрещённые формулировки
     lowered = body.lower()
@@ -178,7 +268,7 @@ def check_document(text):
     lines = text.splitlines()
     issues = []
 
-    blocks = parse_requirements(lines)
+    blocks = parse_requirements(lines) + parse_table_requirements(lines)
 
     # Дубли ID
     ids = [b["id"] for b in blocks]
@@ -189,7 +279,10 @@ def check_document(text):
 
     # Проверка каждого требования
     for b in blocks:
-        issues.extend(check_requirement(b))
+        if b.get("table"):
+            issues.extend(check_table_requirement(b))
+        else:
+            issues.extend(check_requirement(b))
 
     # Битые ссылки: ID упомянут, но нигде не определён
     defined = set(ids)
@@ -208,6 +301,11 @@ def check_document(text):
 
     # Остатки шаблона
     for i, line in enumerate(lines, start=1):
+        # Строка, объясняющая маркер, а не являющаяся им:
+        # в легенде и в служебных пояснениях маркер стоит в кавычках
+        # или обратных апострофах
+        if "`[УДАЛИТЬ" in line or "«[УДАЛИТЬ" in line or '"[УДАЛИТЬ' in line:
+            continue
         for marker in TEMPLATE_LEFTOVERS:
             if marker in line:
                 issues.append(Issue("WARN", i,
@@ -241,7 +339,9 @@ def report(issues, blocks, path):
     print(f"  ПРОВЕРКА ТЗ: {path}")
     print(f"{'='*62}\n")
 
-    print(f"Требований найдено: {len(blocks)}")
+    n_table = sum(1 for b in blocks if b.get("table"))
+    print(f"Требований найдено: {len(blocks)}"
+          f"  (полный формат: {len(blocks) - n_table}, табличный: {n_table})")
     if by_module:
         print("\nПо модулям:")
         for m, c in sorted(by_module.items(), key=lambda x: -x[1]):
