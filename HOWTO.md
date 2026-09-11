@@ -317,6 +317,7 @@ claude
 /tz-summary
                        → закрыть и открыть Claude Code
 /tz-review
+/tz-client-summary                    короткая версия для клиента (5-6 стр.)
 ```
 
 ```powershell
