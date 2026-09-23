@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 MODULES = {
     "HOME", "CAT", "CARD", "SRCH", "CART", "CHK", "PAY", "SHIP", "ORD", "STOCK",
     "RET", "DISC", "ACC", "B2B", "MGR", "ADM", "AUTH", "NOTIF", "SEO",
-    "INT", "CNT", "MIGR", "AI",
+    "INT", "CNT", "MIGR", "AI", "MARKET", "CHANNELS",
 }
 
 NFR_CATEGORIES = {"PERF", "LOAD", "SEC", "AVL", "LEGAL", "OPS", "COMP", "AI"}
