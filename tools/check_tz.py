@@ -42,6 +42,7 @@ CRITICAL_SECTIONS = {
     "5.2": "Матрица прав",
     "6.3": "Диаграммы состояний",
     "10.1": "Источник истины по данным",
+    "11.4": "Безопасность (включая защиту форм от спама)",
     "11.6": "Эксплуатация",
     "14": "Критерии приёмки",
 }
@@ -318,6 +319,33 @@ def check_document(text):
         if not pattern.search(text):
             issues.append(Issue("ERROR", 0,
                 f"отсутствует раздел {num} «{name}» — SDD не начнётся"))
+
+    # Антиспам: бриф п. 10 обязан превратиться в NFR-SEC-*, а не остаться
+    # только ответом на чекбокс в брифе. Ищем раздел 11.4 и проверяем,
+    # что внутри него (до следующего заголовка того же уровня) есть
+    # хотя бы один реальный NFR-SEC-NNN.
+    sec_match = re.search(r"^(#+)\s*11\.4[.\s].*$", text, re.M)
+    if sec_match:
+        level = len(sec_match.group(1))
+        start = sec_match.end()
+        next_heading = re.search(
+            r"^#{1," + str(level) + r"}\s", text[start:], re.M)
+        section_text = text[start: start + next_heading.start()] if next_heading else text[start:]
+        if not re.search(r"NFR-SEC-\d{3}", section_text):
+            issues.append(Issue("WARN", 0,
+                "раздел 11.4 «Безопасность» не содержит ни одного "
+                "NFR-SEC-NNN — вероятно, ответ брифа п. 10 про защиту "
+                "форм от спама не превращён в требование (см. правило "
+                "в шаблоне, п. 11.4)"))
+
+    # Битая ссылка «см. ТЗ раздел 10» на антиспам — раздел 10 это
+    # интеграции, а не безопасность; правильная ссылка — на NFR-SEC-*
+    for i, line in enumerate(lines, start=1):
+        if re.search(r"спам", line, re.I) and re.search(r"раздел\s*10\b", line, re.I):
+            issues.append(Issue("WARN", i,
+                "ссылка на «раздел 10» рядом со словом «спам» — "
+                "раздел 10 это «Интеграции», антиспам живёт в 11.4 "
+                "(NFR-SEC-*); проверь, не битая ли это ссылка"))
 
     return issues, blocks
 
